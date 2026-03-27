@@ -1,5 +1,5 @@
 CREATE TABLE users(
-  user_id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,     --generated always suggests that user_id is auto-incremented and cannot be manually inserted. Similarly for other tables with generated always.
   name VARCHAR2(100) NOT NULL,
   email VARCHAR2(100) UNIQUE NOT NULL,
   password VARCHAR2(100) NOT NULL,
