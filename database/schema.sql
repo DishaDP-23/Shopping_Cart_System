@@ -1,3 +1,17 @@
+-- =====================================================
+-- DROP EXISTING TABLES (SAFE RESET)
+-- =====================================================
+
+DROP TABLE payments CASCADE CONSTRAINTS;
+DROP TABLE order_items CASCADE CONSTRAINTS;
+DROP TABLE orders CASCADE CONSTRAINTS;
+DROP TABLE cart_items CASCADE CONSTRAINTS;
+DROP TABLE cart CASCADE CONSTRAINTS;
+DROP TABLE products CASCADE CONSTRAINTS;
+DROP TABLE categories CASCADE CONSTRAINTS;
+DROP TABLE users CASCADE CONSTRAINTS;
+
+
 CREATE TABLE users(
   user_id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,     --generated always suggests that user_id is auto-incremented and cannot be manually inserted. Similarly for other tables with generated always.
   name VARCHAR2(100) NOT NULL,
