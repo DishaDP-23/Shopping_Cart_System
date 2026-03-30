@@ -112,4 +112,4 @@ SELECT
 FROM order_items oi
 JOIN products p ON oi.product_id = p.product_id
 GROUP BY p.name
-ORDER BY revenue DESC;
+ORDER BY revenue DESC;S
