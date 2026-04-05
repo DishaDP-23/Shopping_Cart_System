@@ -1,6 +1,7 @@
 --PROCEDURE TO PLACE ORDER____________________________________________________________________
 SET SERVEROUTPUT ON;
 
+/*
 CREATE OR REPLACE PROCEDURE place_order_proc (
     p_user_id IN NUMBER
 )
@@ -45,6 +46,66 @@ EXCEPTION
 END;
 /
 
+*/
+
+CREATE OR REPLACE PROCEDURE place_order_proc (
+    p_user_id IN NUMBER
+)
+AS
+    v_cart_id NUMBER;
+    v_order_id NUMBER;
+    v_total NUMBER;
+BEGIN
+    -- Fetch cart id
+    SELECT cart_id INTO v_cart_id
+    FROM cart
+    WHERE user_id = p_user_id;
+
+    -- Create order
+    INSERT INTO orders(user_id, total_amount)
+    VALUES (p_user_id, 0)
+    RETURNING order_id INTO v_order_id;
+
+    -- Insert order items
+    INSERT INTO order_items(order_id, product_id, quantity, price)
+    SELECT v_order_id, ci.product_id, ci.quantity, p.price
+    FROM cart_items ci
+    JOIN products p ON ci.product_id = p.product_id
+    WHERE ci.cart_id = v_cart_id;
+
+    UPDATE products p
+SET p.stock = p.stock - (
+    SELECT SUM(ci.quantity)
+    FROM cart_items ci
+    WHERE ci.cart_id = v_cart_id
+      AND ci.product_id = p.product_id
+)
+WHERE EXISTS (
+    SELECT 1
+    FROM cart_items ci
+    WHERE ci.cart_id = v_cart_id
+      AND ci.product_id = p.product_id
+);
+
+    -- Calculate total first
+    SELECT NVL(SUM(quantity * price), 0)
+    INTO v_total
+    FROM order_items
+    WHERE order_id = v_order_id;
+
+    -- Update total amount
+    UPDATE orders
+    SET total_amount = v_total
+    WHERE order_id = v_order_id;
+
+    -- Clear cart
+    DELETE FROM cart_items
+    WHERE cart_id = v_cart_id;
+
+    DBMS_OUTPUT.PUT_LINE('Order placed successfully');
+END;
+/
+
 -- FUNCTIO TO CALCULATE ORDER TOTAL____________________________________________________________________
 CREATE OR REPLACE FUNCTION calculate_order_total_func (
     p_user_id IN NUMBER
@@ -65,6 +126,8 @@ BEGIN
     RETURN v_total;
 END;
 /
+
+
 
 
 -- PROCEDURE TO INSERT PAYMENT____________________________________________________________________

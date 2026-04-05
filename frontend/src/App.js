@@ -1,4 +1,5 @@
-import logo from './logo.svg';
+
+/*import logo from './logo.svg';
 import './App.css';
 
 function App() {
@@ -20,6 +21,15 @@ function App() {
       </header>
     </div>
   );
+}
+
+export default App;
+*/
+
+import ShoppingCart from "./ShoppingCart";
+
+function App() {
+  return <ShoppingCart />;
 }
 
 export default App;
