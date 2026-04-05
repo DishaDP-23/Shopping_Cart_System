@@ -1,8 +1,9 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from db import get_connection
 
 app = Flask(__name__)
-
+CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
 # -------------------------------
 # 1. Place Order (PL/SQL)
 # -------------------------------
@@ -164,34 +165,85 @@ def register():
 
     return jsonify({"message": "User registered successfully"})
 
+# -------------------------------
+# User Login
+# -------------------------------
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.json
+    conn   = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT user_id, role FROM users WHERE email=:1 AND password=:2",
+        [data['email'], data['password']]
+    )
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if row:
+        return jsonify({"user_id": row[0], "role": row[1]})
+    return jsonify({"error": "Invalid credentials"}), 401
 
 # -------------------------------
 # 7. View Products
 # -------------------------------
 @app.route('/products', methods=['GET'])
 def get_products():
-    conn = get_connection()
+    # Read optional query-string filter params
+    category    = request.args.get('category')      # e.g. ?category=Electronics
+    min_price   = request.args.get('min_price')     # e.g. ?min_price=100
+    max_price   = request.args.get('max_price')     # e.g. ?max_price=5000
+    in_stock    = request.args.get('in_stock')      # e.g. ?in_stock=true
+    search      = request.args.get('search')        # e.g. ?search=laptop
+
+    conn   = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT product_id, name, price, stock
-        FROM products
-    """)
+    # Build query dynamically based on provided filters
+    sql    = """
+        SELECT p.product_id, p.name, p.price, p.stock, c.category_name
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.category_id
+        WHERE 1=1
+    """
+    params = []
+
+    if category:
+        sql += " AND UPPER(c.category_name) = UPPER(:cat)"
+        params.append(category)
+
+    if min_price:
+        sql += " AND p.price >= :min_p"
+        params.append(float(min_price))
+
+    if max_price:
+        sql += " AND p.price <= :max_p"
+        params.append(float(max_price))
+
+    if in_stock and in_stock.lower() == 'true':
+        sql += " AND p.stock > 0"
+
+    if search:
+        sql += " AND UPPER(p.name) LIKE UPPER(:srch)"
+        params.append(f"%{search}%")
+
+    sql += " ORDER BY p.product_id"
+
+    cursor.execute(sql, params)
 
     products = []
     for row in cursor:
         products.append({
-            "product_id": row[0],
-            "name": row[1],
-            "price": float(row[2]),
-            "stock": row[3]
+            "product_id":    row[0],
+            "name":          row[1],
+            "price":         float(row[2]),
+            "stock":         row[3],
+            "category_name": row[4] if row[4] else "Uncategorised",
         })
 
     cursor.close()
     conn.close()
-
     return jsonify(products)
-
 
 # -------------------------------
 # 8. Add to Cart
@@ -439,6 +491,104 @@ def cart_total(user_id):
         "user_id": user_id,
         "total": float(total) if total else 0
     })
+
+# Richer admin dashboard: revenue, units sold, low-stock alerts
+@app.route('/admin/analytics', methods=['GET'])
+def admin_analytics():
+    conn   = get_connection()
+    cursor = conn.cursor()
+
+    # Top products by revenue
+    cursor.execute("""
+        SELECT p.name,
+               SUM(oi.quantity)             AS total_sold,
+               SUM(oi.quantity * oi.price)  AS revenue,
+               c.category_name
+        FROM order_items oi
+        JOIN products p  ON oi.product_id  = p.product_id
+        LEFT JOIN categories c ON p.category_id = c.category_id
+        GROUP BY p.name, c.category_name
+        ORDER BY revenue DESC
+    """)
+    top_products = []
+    for row in cursor:
+        top_products.append({
+            "product":    row[0],
+            "total_sold": row[1],
+            "revenue":    float(row[2]),
+            "category":   row[3] if row[3] else "Uncategorised",
+        })
+
+    # Low-stock alerts (stock <= 5)
+    cursor.execute("""
+        SELECT p.product_id, p.name, p.stock, c.category_name
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.category_id
+        WHERE p.stock <= 5
+        ORDER BY p.stock ASC
+    """)
+    low_stock = []
+    for row in cursor:
+        low_stock.append({
+            "product_id": row[0],
+            "name":       row[1],
+            "stock":      row[2],
+            "category":   row[3] if row[3] else "Uncategorised",
+        })
+
+    # Revenue per category
+    cursor.execute("""
+        SELECT c.category_name,
+               SUM(oi.quantity * oi.price) AS revenue
+        FROM order_items oi
+        JOIN products p ON oi.product_id = p.product_id
+        LEFT JOIN categories c ON p.category_id = c.category_id
+        GROUP BY c.category_name
+        ORDER BY revenue DESC
+    """)
+    category_revenue = []
+    for row in cursor:
+        category_revenue.append({
+            "category": row[0] if row[0] else "Uncategorised",
+            "revenue":  float(row[1]),
+        })
+
+    # Summary totals
+    cursor.execute("SELECT COUNT(*) FROM orders")
+    total_orders = cursor.fetchone()[0]
+
+    cursor.execute("SELECT NVL(SUM(total_amount), 0) FROM orders")
+    total_revenue = float(cursor.fetchone()[0])
+
+    cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'customer'")
+    total_customers = cursor.fetchone()[0]
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({
+        "summary": {
+            "total_orders":    total_orders,
+            "total_revenue":   total_revenue,
+            "total_customers": total_customers,
+        },
+        "top_products":     top_products,
+        "low_stock":        low_stock,
+        "category_revenue": category_revenue,
+    })
+
+
+# GET /categories — used by the filter dropdown in the frontend
+@app.route('/categories', methods=['GET'])
+def get_categories():
+    conn   = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT category_id, category_name FROM categories ORDER BY category_name")
+    cats = [{"category_id": row[0], "category_name": row[1]} for row in cursor]
+    cursor.close()
+    conn.close()
+    return jsonify(cats)
+
 
 
 # -------------------------------
