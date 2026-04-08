@@ -60,7 +60,7 @@ BEGIN
            RAISE_APPLICATION_ERROR(-20006, 'Product not found');
     END;
 
-    -- Try update first
+    -- update first
     UPDATE cart_items
     SET quantity = quantity + p_quantity
     WHERE cart_id = v_cart_id

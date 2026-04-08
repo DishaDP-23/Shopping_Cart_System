@@ -391,22 +391,37 @@ function AuthModal({ onLogin, onClose }) {
   const [busy, setBusy] = useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
-  async function handleSubmit() {
-    setBusy(true); setMsg("");
-    try {
-      if (mode === "register") {
-        const res = await api.post("/register", { name: form.name, email: form.email, password: form.password, role: form.role });
-        res.message ? (setMsg("Registered! You can now sign in."), setMode("login")) : setMsg(res.error || "Registration failed");
-      } else {
-        const res = await api.post("/login", { email: form.email, password: form.password }).catch(() => ({ user_id: 1, role: "customer" }));
-        if (res.error) { setMsg(res.error); setBusy(false); return; }
-        localStorage.setItem("user_id", res.user_id);
-        localStorage.setItem("user_role", res.role);
-        onLogin(res.user_id, res.role);
-      }
-    } catch { setMsg("Server unreachable — please try again."); }
-    setBusy(false);
+async function handleSubmit() {
+  setBusy(true);
+  setMsg("");
+
+  if (mode === "register") {
+    const res = await api.post("/register", {
+      name: form.name, email: form.email,
+      password: form.password, role: form.role
+    });
+    if (res.error) {
+      setMsg("Email already registered");
+    } else {
+      setMsg("Registered! You can now sign in.");
+      setMode("login");
+    }
+
+  } else {
+    const res = await api.post("/login", {
+      email: form.email, password: form.password
+    });
+    if (res.error) {
+      setMsg("Invalid credentials");
+    } else {
+      localStorage.setItem("user_id", res.user_id);
+      localStorage.setItem("user_role", res.role);
+      onLogin(res.user_id, res.role);
+    }
   }
+
+  setBusy(false);
+}
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
